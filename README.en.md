@@ -50,7 +50,7 @@ cd batch-migration-dsl
 ### 2. Configure the Environment File
 ```bash
 # Copy the template
-cp env.example .env
+cp .env.example .env
 
 # Edit the configuration file
 vim .env
@@ -177,7 +177,7 @@ Options:
 ```
 batch-migration-dsl/
 ├── migrate-apps.sh     # Main migration script
-├── env.example         # Environment config template
+├── .env.example         # Environment config template
 ├── .env               # Your environment config (to be created)
 ├── example/           # Example scripts
 │   ├── export-dsl-curl-example.sh
@@ -287,7 +287,7 @@ Contributions are welcome! Please submit issues and pull requests.
 ```bash
 git clone <repository-url>
 cd batch-migration-dsl
-cp env.example .env.dev
+cp .env.example .env.dev
 ```
 
 ### Testing

@@ -53,7 +53,7 @@ cd batch-migration-dsl
 ### 2. 配置环境文件
 ```bash
 # 复制配置模板
-cp env.example .env
+cp .env.example .env
 
 # 编辑配置文件
 vim .env
@@ -191,7 +191,7 @@ chmod +x migrate-apps.sh
 ```
 batch-migration-dsl/
 ├── migrate-apps.sh     # 主迁移脚本
-├── env.example         # 环境配置模板
+├── .env.example         # 环境配置模板
 ├── .env               # 您的环境配置 (需要创建)
 ├── example/           # 示例脚本目录
 │   ├── export-dsl-curl-example.sh
