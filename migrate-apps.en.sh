@@ -146,14 +146,18 @@ get_all_apps() {
     local fetched=0
     local has_more=true
     local retried_refresh=false
-    log "DEBUG" "Fetching app list from: $url (auto pagination)"
-    log "DEBUG" "Full request URL: ${url}/console/api/apps"
+
+    log "DEBUG" "Fetching app list from: $url (auto pagination)" >&2
+    log "DEBUG" "Full request URL: ${url}/console/api/apps" >&2
+
     while $has_more; do
         local req_url="${url}/console/api/apps?page=${page}&limit=${limit}"
-        log "DEBUG" "Requesting page ${page}: $req_url"
+        log "DEBUG" "Requesting page ${page}: $req_url" >&2
+
         local temp_response=$(mktemp)
         local temp_headers=$(mktemp)
         local temp_error=$(mktemp)
+
         local http_code=$(curl -s -w "%{http_code}" \
             "$req_url" \
             -H "authorization: Bearer ${token}" \
@@ -165,52 +169,65 @@ get_all_apps() {
             -D "$temp_headers" \
             -o "$temp_response" \
             2>"$temp_error")
+
         local curl_exit_code=$?
         local response=$(cat "$temp_response")
         local error_output=$(cat "$temp_error")
+
         rm -f "$temp_response" "$temp_headers" "$temp_error"
+
+        # 401 auto-refresh token and retry once
         if [[ "$http_code" == "401" && "$retried_refresh" == "false" && -n "${SOURCE_REFRESH_TOKEN:-}" ]]; then
-            log "WARN" "Token expired, auto-refreshing and retrying..."
+            log "WARN" "Token expired, auto-refreshing and retrying..." >&2
             if refresh_source_token; then
                 token="$SOURCE_BEARER_TOKEN"
                 retried_refresh=true
                 continue
             else
-                log "ERROR" "Auto-refresh token failed, cannot continue"
+                log "ERROR" "Auto-refresh token failed, cannot continue" >&2
                 return 1
             fi
         fi
+
         if [[ $curl_exit_code -ne 0 || "$http_code" != "200" ]]; then
-            log "ERROR" "Pagination request failed: page=$page, http_code=$http_code, curl_exit_code=$curl_exit_code"
-            log "ERROR" "Error details: $error_output"
-            log "ERROR" "Response: $response"
+            log "ERROR" "Pagination request failed: page=$page, http_code=$http_code, curl_exit_code=$curl_exit_code" >&2
+            log "ERROR" "Error details: $error_output" >&2
+            log "ERROR" "Response: $response" >&2
             return 1
         fi
+
         if ! echo "$response" | jq empty 2>/dev/null; then
-            log "ERROR" "Response is not valid JSON: $response"
+            log "ERROR" "Response is not valid JSON: $response" >&2
             return 1
         fi
+
         local page_apps=$(echo "$response" | jq -r '.data[] | "\(.id),\(.name)"' 2>/dev/null)
         if [[ -n "$page_apps" ]]; then
             all_apps+="$page_apps\n"
             fetched=$((fetched + $(echo "$page_apps" | wc -l)))
         fi
+
         has_more=$(echo "$response" | jq -r '.has_more // false')
         total=$(echo "$response" | jq -r '.total // 0')
-        log "DEBUG" "Fetched $fetched / $total, has_more: $has_more"
+        log "DEBUG" "Fetched $fetched / $total, has_more: $has_more" >&2
+
         if [[ "$has_more" != "true" ]]; then
             break
         fi
         page=$((page + 1))
     done
+
     if [[ -z "$all_apps" ]]; then
-        log "WARN" "No apps found"
+        log "WARN" "No apps found" >&2
         echo ""
         return 0
     fi
-    local app_count=$(echo -e "$all_apps" | grep -v '^$' | wc -l)
-    log "INFO" "$app_count apps fetched (auto pagination)"
-    echo -e "$all_apps" | grep -v '^$'
+    
+    # Clean app list, remove empty lines
+    local clean_apps=$(echo -e "$all_apps" | grep -v '^$')
+    local app_count=$(echo "$clean_apps" | wc -l | tr -d ' ')
+    log "INFO" "$app_count apps fetched (auto pagination)" >&2
+    echo "$clean_apps"
 }
 
 # Export a single app
@@ -220,14 +237,22 @@ export_app() {
     local url="$3"
     local token="$4"
     local include_secret="${5:-false}"
-    log "INFO" "Exporting app: $app_name (ID: $app_id)"
+    
+    log "INFO" "Exporting app: $app_name (ID: $app_id)" >&2
+    
     local export_url="${url}/console/api/apps/${app_id}/export?include_secret=${include_secret}"
+    
+    # Retry mechanism
     local max_retries="${MAX_RETRIES:-3}"
     local retry_count=0
+    
     while [[ $retry_count -lt $max_retries ]]; do
+        # Use temporary files to save response
         local temp_response=$(mktemp)
         local temp_headers=$(mktemp)
         local temp_error=$(mktemp)
+        
+        # Execute curl request and save status code
         local http_code=$(curl -s -w "%{http_code}" \
             "$export_url" \
             -H "authorization: Bearer ${token}" \
@@ -236,54 +261,61 @@ export_app() {
             -D "$temp_headers" \
             -o "$temp_response" \
             2>"$temp_error")
+        
         local curl_exit_code=$?
         local response=$(cat "$temp_response")
         local error_output=$(cat "$temp_error")
+        
+        # Clean up temporary files
         rm -f "$temp_response" "$temp_headers" "$temp_error"
+        
         if [[ $curl_exit_code -ne 0 ]]; then
-            log "WARN" "CURL request failed (attempt $((retry_count + 1))/$max_retries), exit code: $curl_exit_code"
+            log "WARN" "CURL request failed (attempt $((retry_count + 1))/$max_retries), exit code: $curl_exit_code" >&2
         elif [[ "$http_code" != "200" ]]; then
-            log "WARN" "HTTP request failed (attempt $((retry_count + 1))/$max_retries), status code: $http_code"
+            log "WARN" "HTTP request failed (attempt $((retry_count + 1))/$max_retries), status code: $http_code" >&2
             case $http_code in
                 401)
-                    log "ERROR" "Authentication failed: Bearer Token may be invalid or expired"
+                    log "ERROR" "Authentication failed: Bearer Token may be invalid or expired" >&2
                     ;;
                 403)
-                    log "ERROR" "Permission denied: Token does not have export permission for this app"
+                    log "ERROR" "Permission denied: Token does not have export permission for this app" >&2
                     ;;
                 404)
-                    log "ERROR" "App not found: App ID $app_id may be invalid"
+                    log "ERROR" "App not found: App ID $app_id may be invalid" >&2
                     ;;
             esac
             if [[ -n "$response" ]]; then
-                log "DEBUG" "Error response: $response"
+                log "DEBUG" "Error response: $response" >&2
             fi
         elif [[ -n "$response" ]]; then
+            # Extract data field content as yaml
             local yaml_content=$(echo "$response" | jq -r '.data // empty')
             if [[ -z "$yaml_content" || "$yaml_content" == "null" ]]; then
-                log "WARN" "No data field in export content, response: $response"
+                log "WARN" "No data field in export content, response: $response" >&2
                 echo "$response" > "${BACKUP_PATH}/${app_id}_error_${retry_count}.json"
             elif echo "$yaml_content" | grep -q '^app:'; then
                 local safe_name=$(echo "$app_name" | sed 's/[^a-zA-Z0-9._-]/_/g')
                 local export_file="${BACKUP_PATH}/${app_id}_${safe_name}.yaml"
                 echo "$yaml_content" > "$export_file"
-                log "INFO" "App exported: $export_file"
+                log "INFO" "App exported: $export_file" >&2
                 echo "$export_file"
                 return 0
             else
-                log "WARN" "data field format incorrect (attempt $((retry_count + 1))/$max_retries)"
-                log "DEBUG" "data content: ${yaml_content:0:200}..."
+                log "WARN" "data field format incorrect (attempt $((retry_count + 1))/$max_retries)" >&2
+                log "DEBUG" "data content: ${yaml_content:0:200}..." >&2
                 echo "$response" > "${BACKUP_PATH}/${app_id}_error_${retry_count}.json"
             fi
         else
-            log "WARN" "Empty response (attempt $((retry_count + 1))/$max_retries)"
+            log "WARN" "Empty response (attempt $((retry_count + 1))/$max_retries)" >&2
         fi
+        
         retry_count=$((retry_count + 1))
         if [[ $retry_count -lt $max_retries ]]; then
             sleep 2
         fi
     done
-    log "ERROR" "App export failed: $app_name (ID: $app_id) - retried $max_retries times"
+    
+    log "ERROR" "App export failed: $app_name (ID: $app_id) - retried $max_retries times" >&2
     return 1
 }
 
@@ -497,8 +529,10 @@ main() {
     fi
     log "INFO" "Fetching app list from source environment..."
     local apps_list
+    
     if [[ -n "$app_ids_to_migrate" ]]; then
         log "INFO" "Using specified app ID list: $app_ids_to_migrate"
+        # Convert comma-separated IDs to list format
         apps_list=$(echo "$app_ids_to_migrate" | tr ',' '\n' | while read -r app_id; do
             echo "${app_id},SpecifiedApp_${app_id}"
         done)
@@ -509,19 +543,37 @@ main() {
             exit 1
         fi
     fi
-    local total_apps=$(echo "$apps_list" | wc -l)
+    
+    # Correctly calculate app count, filter empty lines
+    local total_apps=$(echo "$apps_list" | grep -v '^$' | wc -l | tr -d ' ')
     log "INFO" "$total_apps apps to process"
+    
+    # Export apps
     local exported_files=()
     local export_success_count=0
-    echo "$apps_list" | while IFS=',' read -r app_id app_name; do
-        if [[ -n "$app_id" ]]; then
+    
+    # Clear exported files list
+    > "${BACKUP_PATH}/exported_files.list"
+    
+    # Use while read loop to avoid subshell issues
+    while IFS=',' read -r app_id app_name; do
+        # Remove leading and trailing spaces from app_id and app_name
+        app_id=$(echo "$app_id" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        app_name=$(echo "$app_name" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        
+        if [[ -n "$app_id" && "$app_id" != "" ]]; then
+            log "DEBUG" "Processing app: ID=$app_id, Name=$app_name"
             if export_file=$(export_app "$app_id" "$app_name" "$SOURCE_DIFY_URL" "$SOURCE_BEARER_TOKEN" "${INCLUDE_SECRET:-false}"); then
                 export_success_count=$((export_success_count + 1))
                 exported_files+=("$export_file")
+                # Only write file path, no logs
                 echo "$export_file" >> "${BACKUP_PATH}/exported_files.list"
             fi
+        else
+            log "DEBUG" "Skipping empty app ID: '$app_id'"
         fi
-    done
+    done < <(echo "$apps_list" | grep -v '^$')
+    
     if [[ "$export_only" == "true" ]]; then
         log "INFO" "Export mode finished, exported files in: $BACKUP_PATH"
         exit 0

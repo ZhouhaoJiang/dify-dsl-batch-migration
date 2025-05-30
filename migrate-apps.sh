@@ -160,12 +160,12 @@ get_all_apps() {
     local has_more=true
     local retried_refresh=false
 
-    log "DEBUG" "获取应用列表从: $url (自动分页)"
-    log "DEBUG" "完整请求URL: ${url}/console/api/apps"
+    log "DEBUG" "获取应用列表从: $url (自动分页)" >&2
+    log "DEBUG" "完整请求URL: ${url}/console/api/apps" >&2
 
     while $has_more; do
         local req_url="${url}/console/api/apps?page=${page}&limit=${limit}"
-        log "DEBUG" "请求第${page}页: $req_url"
+        log "DEBUG" "请求第${page}页: $req_url" >&2
 
         local temp_response=$(mktemp)
         local temp_headers=$(mktemp)
@@ -191,26 +191,26 @@ get_all_apps() {
 
         # 401自动刷新token并重试一次
         if [[ "$http_code" == "401" && "$retried_refresh" == "false" && -n "${SOURCE_REFRESH_TOKEN:-}" ]]; then
-            log "WARN" "检测到Token过期，自动刷新后重试..."
+            log "WARN" "检测到Token过期，自动刷新后重试..." >&2
             if refresh_source_token; then
                 token="$SOURCE_BEARER_TOKEN"
                 retried_refresh=true
                 continue
             else
-                log "ERROR" "自动刷新token失败，无法继续"
+                log "ERROR" "自动刷新token失败，无法继续" >&2
                 return 1
             fi
         fi
 
         if [[ $curl_exit_code -ne 0 || "$http_code" != "200" ]]; then
-            log "ERROR" "分页请求失败: page=$page, http_code=$http_code, curl_exit_code=$curl_exit_code"
-            log "ERROR" "错误详情: $error_output"
-            log "ERROR" "响应内容: $response"
+            log "ERROR" "分页请求失败: page=$page, http_code=$http_code, curl_exit_code=$curl_exit_code" >&2
+            log "ERROR" "错误详情: $error_output" >&2
+            log "ERROR" "响应内容: $response" >&2
             return 1
         fi
 
         if ! echo "$response" | jq empty 2>/dev/null; then
-            log "ERROR" "响应不是有效的JSON格式: $response"
+            log "ERROR" "响应不是有效的JSON格式: $response" >&2
             return 1
         fi
 
@@ -231,13 +231,16 @@ get_all_apps() {
     done
 
     if [[ -z "$all_apps" ]]; then
-        log "WARN" "没有找到任何应用"
+        log "WARN" "没有找到任何应用" >&2
         echo ""
         return 0
     fi
-    local app_count=$(echo -e "$all_apps" | grep -v '^$' | wc -l)
-    log "INFO" "成功获取到 $app_count 个应用（自动分页）"
-    echo -e "$all_apps" | grep -v '^$'
+    
+    # 清理应用列表，移除空行
+    local clean_apps=$(echo -e "$all_apps" | grep -v '^$')
+    local app_count=$(echo "$clean_apps" | wc -l | tr -d ' ')
+    log "INFO" "成功获取到 $app_count 个应用（自动分页）" >&2
+    echo "$clean_apps"
 }
 
 # 导出单个应用
@@ -248,7 +251,7 @@ export_app() {
     local token="$4"
     local include_secret="${5:-false}"
     
-    log "INFO" "导出应用: $app_name (ID: $app_id)"
+    log "INFO" "导出应用: $app_name (ID: $app_id)" >&2
     
     local export_url="${url}/console/api/apps/${app_id}/export?include_secret=${include_secret}"
     
@@ -280,43 +283,43 @@ export_app() {
         rm -f "$temp_response" "$temp_headers" "$temp_error"
         
         if [[ $curl_exit_code -ne 0 ]]; then
-            log "WARN" "CURL请求失败 (尝试 $((retry_count + 1))/$max_retries)，退出码: $curl_exit_code"
+            log "WARN" "CURL请求失败 (尝试 $((retry_count + 1))/$max_retries)，退出码: $curl_exit_code" >&2
         elif [[ "$http_code" != "200" ]]; then
-            log "WARN" "HTTP请求失败 (尝试 $((retry_count + 1))/$max_retries)，状态码: $http_code"
+            log "WARN" "HTTP请求失败 (尝试 $((retry_count + 1))/$max_retries)，状态码: $http_code" >&2
             case $http_code in
                 401)
-                    log "ERROR" "认证失败: Bearer Token可能无效或已过期"
+                    log "ERROR" "认证失败: Bearer Token可能无效或已过期" >&2
                     ;;
                 403)
-                    log "ERROR" "权限不足: 当前Token没有导出此应用的权限"
+                    log "ERROR" "权限不足: 当前Token没有导出此应用的权限" >&2
                     ;;
                 404)
-                    log "ERROR" "应用不存在: 应用ID $app_id 可能无效"
+                    log "ERROR" "应用不存在: 应用ID $app_id 可能无效" >&2
                     ;;
             esac
             if [[ -n "$response" ]]; then
-                log "DEBUG" "错误响应: $response"
+                log "DEBUG" "错误响应: $response" >&2
             fi
         elif [[ -n "$response" ]]; then
             # 提取data字段内容作为yaml
             local yaml_content=$(echo "$response" | jq -r '.data // empty')
             if [[ -z "$yaml_content" || "$yaml_content" == "null" ]]; then
-                log "WARN" "导出内容无data字段，内容: $response"
+                log "WARN" "导出内容无data字段，内容: $response" >&2
                 echo "$response" > "${BACKUP_PATH}/${app_id}_error_${retry_count}.json"
             elif echo "$yaml_content" | grep -q '^app:'; then
                 local safe_name=$(echo "$app_name" | sed 's/[^a-zA-Z0-9._-]/_/g')
                 local export_file="${BACKUP_PATH}/${app_id}_${safe_name}.yaml"
                 echo "$yaml_content" > "$export_file"
-                log "INFO" "应用导出成功: $export_file"
+                log "INFO" "应用导出成功: $export_file" >&2
                 echo "$export_file"
                 return 0
             else
-                log "WARN" "data字段内容格式不正确 (尝试 $((retry_count + 1))/$max_retries)"
-                log "DEBUG" "data内容: ${yaml_content:0:200}..."
+                log "WARN" "data字段内容格式不正确 (尝试 $((retry_count + 1))/$max_retries)" >&2
+                log "DEBUG" "data内容: ${yaml_content:0:200}..." >&2
                 echo "$response" > "${BACKUP_PATH}/${app_id}_error_${retry_count}.json"
             fi
         else
-            log "WARN" "收到空响应 (尝试 $((retry_count + 1))/$max_retries)"
+            log "WARN" "收到空响应 (尝试 $((retry_count + 1))/$max_retries)" >&2
         fi
         
         retry_count=$((retry_count + 1))
@@ -325,7 +328,7 @@ export_app() {
         fi
     done
     
-    log "ERROR" "应用导出失败: $app_name (ID: $app_id) - 已重试 $max_retries 次"
+    log "ERROR" "应用导出失败: $app_name (ID: $app_id) - 已重试 $max_retries 次" >&2
     return 1
 }
 
@@ -594,22 +597,30 @@ main() {
         fi
     fi
     
-    local total_apps=$(echo "$apps_list" | wc -l)
+    local total_apps=$(echo "$apps_list" | grep -v '^$' | wc -l | tr -d ' ')
     log "INFO" "找到 $total_apps 个应用需要处理"
     
     # 导出应用
     local exported_files=()
     local export_success_count=0
     
-    echo "$apps_list" | while IFS=',' read -r app_id app_name; do
-        if [[ -n "$app_id" ]]; then
+    > "${BACKUP_PATH}/exported_files.list"
+    
+    while IFS=',' read -r app_id app_name; do
+        app_id=$(echo "$app_id" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        app_name=$(echo "$app_name" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        
+        if [[ -n "$app_id" && "$app_id" != "" ]]; then
+            log "DEBUG" "处理应用: ID=$app_id, Name=$app_name"
             if export_file=$(export_app "$app_id" "$app_name" "$SOURCE_DIFY_URL" "$SOURCE_BEARER_TOKEN" "${INCLUDE_SECRET:-false}"); then
                 export_success_count=$((export_success_count + 1))
                 exported_files+=("$export_file")
                 echo "$export_file" >> "${BACKUP_PATH}/exported_files.list"
             fi
+        else
+            log "DEBUG" "跳过空的应用ID: '$app_id'"
         fi
-    done
+    done < <(echo "$apps_list" | grep -v '^$')
     
     if [[ "$export_only" == "true" ]]; then
         log "INFO" "导出模式完成，导出的文件保存在: $BACKUP_PATH"
