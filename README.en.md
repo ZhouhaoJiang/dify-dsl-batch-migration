@@ -294,16 +294,3 @@ cp env.example .env.dev
 ```bash
 ./migrate-apps.sh -c .env.dev -d -v
 ```
-
-## License
-
-[License Info]
-
-## Changelog
-
-### v1.0.0
-- Initial release
-- Support for basic app export/import
-- Environment config file support
-- Retry mechanism and error handling
-- Backup and logging features
