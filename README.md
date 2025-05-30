@@ -310,7 +310,7 @@ git clone <repository-url>
 cd batch-migration-dsl
 
 # 创建开发配置
-cp env.example .env.dev
+cp .env.example .env.dev
 ```
 
 ### 测试
