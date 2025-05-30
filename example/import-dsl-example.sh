@@ -1,0 +1,18 @@
+curl 'https://your-dify.example.com/console/api/apps/imports' \
+  -H 'accept: */*' \
+  -H 'accept-language: en-US,en;q=0.9' \
+  -H 'authorization: Bearer <YOUR_ACCESS_TOKEN>' \
+  -H 'baggage: <REDACTED>' \
+  -H 'content-type: application/json' \
+  -H 'origin: https://your-dify.example.com' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://your-dify.example.com/apps' \
+  -H 'sec-ch-ua: "Chromium"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "macOS"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: same-origin' \
+  -H 'sentry-trace: <REDACTED>' \
+  -H 'user-agent: <YOUR_USER_AGENT>' \
+  --data-raw $'xxx'
